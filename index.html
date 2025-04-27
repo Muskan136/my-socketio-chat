@@ -1,58 +1,123 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Socket.IO chat</title>
-  <style>
-      body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-
-      #form { background: rgba(0, 0, 0, 0.15); padding: 0.25rem; position: fixed; bottom: 0; left: 0; right: 0; display: flex; height: 3rem; box-sizing: border-box; backdrop-filter: blur(10px); }
-      #input { border: none; padding: 0 1rem; flex-grow: 1; border-radius: 2rem; margin: 0.25rem; }
-      #input:focus { outline: none; }
-      #form > button { background: #333; border: none; padding: 0 1rem; margin: 0.25rem; border-radius: 3px; outline: none; color: #fff; }
-
-      #messages { list-style-type: none; margin: 0; padding: 0; }
-      #messages > li { padding: 0.5rem 1rem; }
-      #messages > li:nth-child(odd) { background: #efefef; }
-  </style>
-</head>
-<body>
-  <ul id="messages"></ul>
-  <form id="form" action="">
-    <input id="input" autocomplete="off" /><button>Send</button>
-  </form>
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    let counter = 0;
-
-    const socket = io({
-      auth: {
-        serverOffset: 0
-      },
-      ackTimeout: 10000,
-      retries: 3,
-    });
-
-    const form = document.getElementById('form');
-    const input = document.getElementById('input');
-    const messages = document.getElementById('messages');
-
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      if (input.value) {
-        const clientOffset = `${socket.id}-${counter++}`;
-        socket.emit('chat message', input.value, clientOffset);
-        input.value = '';
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Socket.IO chat</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
       }
-    });
+      #messages {
+        list-style-type: none;
+        margin: 0;
+        padding: 20px;
+        max-height: 70vh;
+        overflow-y: auto;
+        width: 90%;
+        max-width: 600px;
+        background: white;
+        border-radius: 10px 10px 0 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      #messages > li {
+        padding: 12px 16px;
+        margin-bottom: 8px;
+        background: #f8f9fa;
+        border-radius: 18px;
+        max-width: 70%;
+        word-break: break-word;
+      }
+      #messages > li:nth-child(odd) {
+        background: #e3f2fd;
+        align-self: flex-start;
+      }
+      #messages > li:nth-child(even) {
+        background: #bbdefb;
+        align-self: flex-end;
+        margin-left: auto;
+      }
+      #form {
+        background: white;
+        padding: 15px;
+        position: fixed;
+        bottom: 0;
+        width: 90%;
+        max-width: 600px;
+        display: flex;
+        border-radius: 0 0 10px 10px;
+        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+      }
+      #input {
+        flex: 1;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 24px;
+        font-size: 16px;
+        outline: none;
+      }
+      #input:focus {
+        border-color: #4dabf7;
+      }
+      #form > button {
+        background: #4dabf7;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        margin-left: 10px;
+        border-radius: 24px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: background 0.3s;
+      }
+      #form > button:hover {
+        background: #339af0;
+      }
+    </style>
+  </head>
+  <body>
+    <ul id="messages"></ul>
+    <form id="form" action="">
+      <input id="input" autocomplete="off" /><button>Send</button>
+    </form>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      let counter = 0;
 
-    socket.on('chat message', (msg, serverOffset) => {
-      const item = document.createElement('li');
-      item.textContent = msg;
-      messages.appendChild(item);
-      window.scrollTo(0, document.body.scrollHeight);
-      socket.auth.serverOffset = serverOffset;
-    });
-  </script>
-</body>
+      const socket = io({
+        auth: {
+          serverOffset: 0,
+        },
+        ackTimeout: 10000,
+        retries: 3,
+      });
+
+      const form = document.getElementById("form");
+      const input = document.getElementById("input");
+      const messages = document.getElementById("messages");
+
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (input.value) {
+          const clientOffset = `${socket.id}-${counter++}`;
+          socket.emit("chat message", input.value, clientOffset);
+          input.value = "";
+        }
+      });
+
+      socket.on("chat message", (msg, serverOffset) => {
+        const item = document.createElement("li");
+        item.textContent = msg;
+        messages.appendChild(item);
+        window.scrollTo(0, document.body.scrollHeight);
+        socket.auth.serverOffset = serverOffset;
+      });
+    </script>
+  </body>
 </html>
