@@ -1,58 +1,62 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-    <title>Socket.IO chat</title>
+    <title>Awesome Socket.IO Chat</title>
     <style>
       body {
-        margin: 0;
-        padding: 0;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        font-family: "Segoe UI", sans-serif;
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      #messages {
-        list-style-type: none;
         margin: 0;
         padding: 20px;
-        max-height: 70vh;
-        overflow-y: auto;
-        width: 90%;
-        max-width: 600px;
-        background: white;
-        border-radius: 10px 10px 0 0;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
-      #messages > li {
-        padding: 12px 16px;
-        margin-bottom: 8px;
-        background: #f8f9fa;
+      #chat-container {
+        width: 100%;
+        max-width: 800px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        height: 90vh;
+      }
+      #users-panel {
+        padding: 15px;
+        background: #4a6fa5;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+      }
+      #messages {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+      }
+      .message {
+        margin-bottom: 15px;
+        padding: 12px 15px;
         border-radius: 18px;
         max-width: 70%;
         word-break: break-word;
       }
-      #messages > li:nth-child(odd) {
+      .user-message {
         background: #e3f2fd;
         align-self: flex-start;
       }
-      #messages > li:nth-child(even) {
+      .my-message {
         background: #bbdefb;
         align-self: flex-end;
         margin-left: auto;
       }
       #form {
-        background: white;
-        padding: 15px;
-        position: fixed;
-        bottom: 0;
-        width: 90%;
-        max-width: 600px;
         display: flex;
-        border-radius: 0 0 10px 10px;
-        box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+        padding: 15px;
+        background: #f8f9fa;
+        border-top: 1px solid #eee;
       }
       #input {
         flex: 1;
@@ -60,12 +64,8 @@
         border: 1px solid #ddd;
         border-radius: 24px;
         font-size: 16px;
-        outline: none;
       }
-      #input:focus {
-        border-color: #4dabf7;
-      }
-      #form > button {
+      #form button {
         background: #4dabf7;
         color: white;
         border: none;
@@ -73,50 +73,105 @@
         margin-left: 10px;
         border-radius: 24px;
         cursor: pointer;
-        font-weight: bold;
-        transition: background 0.3s;
       }
-      #form > button:hover {
-        background: #339af0;
+      .reactions {
+        margin-top: 5px;
+      }
+      .reaction-btn {
+        background: none;
+        border: none;
+        font-size: 16px;
+        cursor: pointer;
+        margin-right: 5px;
       }
     </style>
   </head>
   <body>
-    <ul id="messages"></ul>
-    <form id="form" action="">
-      <input id="input" autocomplete="off" /><button>Send</button>
-    </form>
+    <div id="chat-container">
+      <div id="users-panel">
+        <div id="online-count">Online: 1</div>
+        <div id="username-display">
+          You: <span id="my-username">Anonymous</span>
+        </div>
+      </div>
+      <ul id="messages"></ul>
+      <form id="form">
+        <input id="input" autocomplete="off" placeholder="Type a message..." />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
-      let counter = 0;
+      // Get username
+      const username = prompt("Enter your username:") || "Anonymous";
+      document.getElementById("my-username").textContent = username;
 
-      const socket = io({
-        auth: {
-          serverOffset: 0,
-        },
-        ackTimeout: 10000,
-        retries: 3,
-      });
-
+      const socket = io();
       const form = document.getElementById("form");
       const input = document.getElementById("input");
       const messages = document.getElementById("messages");
+      let messageId = 0;
 
+      // Join chat
+      socket.emit("new user", username);
+
+      // Send message
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         if (input.value) {
-          const clientOffset = `${socket.id}-${counter++}`;
-          socket.emit("chat message", input.value, clientOffset);
+          const msgData = {
+            text: input.value,
+            user: username,
+            id: messageId++,
+          };
+          socket.emit("chat message", msgData);
+          addMessage(msgData, true);
           input.value = "";
         }
       });
 
-      socket.on("chat message", (msg, serverOffset) => {
+      // Receive message
+      socket.on("chat message", (data) => {
+        addMessage(data, false);
+      });
+
+      // Update online users
+      socket.on("user update", (users) => {
+        document.getElementById(
+          "online-count"
+        ).textContent = `Online: ${users.length}`;
+      });
+
+      // Add message to UI
+      function addMessage(data, isMine) {
         const item = document.createElement("li");
-        item.textContent = msg;
+        item.className = isMine ? "message my-message" : "message user-message";
+        item.dataset.id = data.id;
+        item.innerHTML = `
+        <strong>${data.user}:</strong> ${data.text}
+        <div class="reactions">
+          <button class="reaction-btn" onclick="react('👍', ${data.id})">👍</button>
+          <button class="reaction-btn" onclick="react('😂', ${data.id})">😂</button>
+          <button class="reaction-btn" onclick="react('❤️', ${data.id})">❤️</button>
+        </div>
+      `;
         messages.appendChild(item);
-        window.scrollTo(0, document.body.scrollHeight);
-        socket.auth.serverOffset = serverOffset;
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      // Handle reactions
+      window.react = function (emoji, msgId) {
+        socket.emit("react", { emoji, msgId });
+      };
+
+      socket.on("reaction", (data) => {
+        const msg = document.querySelector(`[data-id="${data.msgId}"]`);
+        if (msg) {
+          const reactionSpan = document.createElement("span");
+          reactionSpan.textContent = data.emoji;
+          msg.querySelector(".reactions").appendChild(reactionSpan);
+        }
       });
     </script>
   </body>

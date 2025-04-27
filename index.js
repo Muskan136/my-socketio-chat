@@ -1,84 +1,93 @@
-import express from 'express';
-import { createServer } from 'node:http';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { Server } from 'socket.io';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import { availableParallelism } from 'node:os';
-import cluster from 'node:cluster';
-import { createAdapter, setupPrimary } from '@socket.io/cluster-adapter';
+import express from "express";
+import { createServer } from "node:http";
+import { Server } from "socket.io";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
 
-if (cluster.isPrimary) {
-  const numCPUs = availableParallelism();
-  for (let i = 0; i < numCPUs; i++) {
-    cluster.fork({
-      PORT: 3000 + i
-    });
-  }
+const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  connectionStateRecovery: {}, // Optional: For message recovery
+});
 
-  setupPrimary();
-} else {
-  const db = await open({
-    filename: 'chat.db',
-    driver: sqlite3.Database
-  });
+// Database setup
+const db = await open({
+  filename: "chat.db",
+  driver: sqlite3.Database,
+});
 
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      client_offset TEXT UNIQUE,
-      content TEXT
-    );
-  `);
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    content TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE
+  );
+`);
 
-  const app = express();
-  const server = createServer(app);
-  const io = new Server(server, {
-    connectionStateRecovery: {},
-    adapter: createAdapter()
-  });
+// Track online users
+const onlineUsers = new Map();
 
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-
-  app.get('/', (req, res) => {
-    res.sendFile(join(__dirname, 'index.html'));
-  });
-
-  io.on('connection', async (socket) => {
-    socket.on('chat message', async (msg, clientOffset, callback) => {
-      let result;
-      try {
-        result = await db.run('INSERT INTO messages (content, client_offset) VALUES (?, ?)', msg, clientOffset);
-      } catch (e) {
-        if (e.errno === 19 /* SQLITE_CONSTRAINT */ ) {
-          callback();
-        } else {
-          // nothing to do, just let the client retry
-        }
-        return;
-      }
-      io.emit('chat message', msg, result.lastID);
-      callback();
-    });
-
-    if (!socket.recovered) {
-      try {
-        await db.each('SELECT id, content FROM messages WHERE id > ?',
-          [socket.handshake.auth.serverOffset || 0],
-          (_err, row) => {
-            socket.emit('chat message', row.content, row.id);
-          }
-        )
-      } catch (e) {
-        // something went wrong
-      }
+io.on("connection", (socket) => {
+  // New user joins
+  socket.on("new user", async (username) => {
+    try {
+      await db.run(
+        "INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)",
+        socket.id,
+        username
+      );
+      onlineUsers.set(socket.id, username);
+      updateOnlineUsers();
+    } catch (error) {
+      console.error("Error adding user:", error);
     }
   });
 
-  const port = process.env.PORT;
-
-  server.listen(port, () => {
-    console.log(`server running at http://localhost:${port}`);
+  // Handle messages
+  socket.on("chat message", async (msgData, callback) => {
+    try {
+      const result = await db.run(
+        "INSERT INTO messages (username, content) VALUES (?, ?)",
+        msgData.user,
+        msgData.text
+      );
+      io.emit("chat message", {
+        ...msgData,
+        id: result.lastID,
+        timestamp: new Date().toISOString(),
+      });
+      callback();
+    } catch (error) {
+      console.error("Error saving message:", error);
+    }
   });
-}
+
+  // Handle reactions
+  socket.on("react", (reactionData) => {
+    io.emit("reaction", reactionData);
+  });
+
+  // User disconnects
+  socket.on("disconnect", () => {
+    onlineUsers.delete(socket.id);
+    updateOnlineUsers();
+  });
+
+  function updateOnlineUsers() {
+    io.emit("user update", Array.from(onlineUsers.values()));
+  }
+});
+
+// Serve static files
+app.use(express.static("public"));
+
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
